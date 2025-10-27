@@ -1,0 +1,16 @@
+# nfs-main-pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  # This is the main PVC for our entire NFS share
+  name: nfs-main-pvc
+spec:
+  # It must be ReadWriteMany to be shared by multiple pods
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      # Request a size that's small enough to fit on the PV
+      storage: 10Gi
+  # This makes sure it binds to our nfs-pv
+  storageClassName: ""

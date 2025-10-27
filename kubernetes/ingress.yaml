@@ -1,0 +1,31 @@
+# ingress.yaml (Updated Version)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ticketingsystem-ingress
+  # Add these annotations to properly handle WebSockets for Reverb
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: ticketingsystem.uk
+    http:
+      paths:
+      # New rule for Reverb WebSocket traffic
+      - path: /app
+        pathType: Prefix
+        backend:
+          service:
+            name: reverb # Route to the Reverb service
+            port:
+              number: 6001
+      # Updated rule for all other application traffic
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: nginx-service # Route to your new main NGINX service
+            port:
+              number: 80

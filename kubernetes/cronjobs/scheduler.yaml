@@ -1,0 +1,33 @@
+# scheduler.yaml (Simplified for Debugging)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: laravel-scheduler
+spec:
+  schedule: "* * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: scheduler
+            image: deampuleadd/premium-app:k8s
+            imagePullPolicy: Always
+            command: ["php", "artisan", "schedule:run"]
+            # --- BACKUP MOUNT REMOVED ---
+            volumeMounts:
+            - name: env-secret-volume
+              mountPath: "/var/www/html/.env"
+              subPath: ".env"
+            - name: nfs-storage-images
+              mountPath: "/var/www/html/public/images"
+              subPath: "images"
+          volumes:
+          - name: env-secret-volume
+            secret:
+              secretName: sealed-env-secret
+          # --- BACKUP VOLUME REMOVED ---
+          - name: nfs-storage-images
+            persistentVolumeClaim:
+              claimName: nfs-main-pvc

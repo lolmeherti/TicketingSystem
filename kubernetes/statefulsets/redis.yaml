@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"apps/v1","kind":"StatefulSet","metadata":{"annotations":{},"name":"redis","namespace":"default"},"spec":{"replicas":1,"selector":{"matchLabels":{"app":"redis"}},"serviceName":"redis","template":{"metadata":{"labels":{"app":"redis"}},"spec":{"containers":[{"command":["redis-server","/etc/redis/redis.conf"],"image":"redis:alpine","name":"redis","ports":[{"containerPort":6379,"name":"redis"}],"volumeMounts":[{"mountPath":"/data","name":"nfs-storage","subPath":"redis"},{"mountPath":"/etc/redis/redis.conf","name":"config","subPath":"redis.conf"}]}],"volumes":[{"name":"nfs-storage","persistentVolumeClaim":{"claimName":"nfs-main-pvc"}},{"configMap":{"items":[{"key":"redis.conf","path":"redis.conf"}],"name":"redis-config"},"name":"config"}]}}}}
+  creationTimestamp: "2025-10-25T06:23:16Z"
+  generation: 2
+  name: redis
+  namespace: default
+  resourceVersion: "1955583"
+  uid: 9c336e18-cfe5-4d34-8885-999d6bc0503c
+spec:
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  podManagementPolicy: OrderedReady
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: redis
+  serviceName: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - command:
+        - redis-server
+        - /etc/redis/redis.conf
+        image: redis:alpine
+        imagePullPolicy: Always
+        name: redis
+        ports:
+        - containerPort: 6379
+          name: redis
+          protocol: TCP
+        resources: {}
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /data
+          name: nfs-storage
+          subPath: redis
+        - mountPath: /etc/redis/redis.conf
+          name: config
+          subPath: redis.conf
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: nfs-storage
+        persistentVolumeClaim:
+          claimName: nfs-main-pvc
+      - configMap:
+          defaultMode: 420
+          items:
+          - key: redis.conf
+            path: redis.conf
+          name: redis-config
+        name: config
+  updateStrategy:
+    rollingUpdate:
+      partition: 0
+    type: RollingUpdate
+status:
+  availableReplicas: 1
+  collisionCount: 0
+  currentReplicas: 1
+  currentRevision: redis-57f644d7bc
+  observedGeneration: 2
+  readyReplicas: 1
+  replicas: 1
+  updateRevision: redis-57f644d7bc
+  updatedReplicas: 1
