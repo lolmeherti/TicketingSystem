@@ -314,7 +314,7 @@ pipeline {
                     script {
                         echo "Deploying version ${IMAGE_TAG} to ArgoCD..."
 
-                        sh "curl -sSL -k -o argocd https://${ARGOCD_SERVER}/download/argocd-linux-amd64"
+                        sh "curl -sSL -k -o argocd https://${ARGOCD_SERVER}/download/argocd-linux-arm64"
                         sh "chmod +x argocd"
 
                         sh """
