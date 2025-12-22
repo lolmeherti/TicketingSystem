@@ -16,17 +16,27 @@ spec:
     spec:
       serviceAccountName: default
       containers:
-      - name: jenkins
-        image: jenkins/jenkins:jdk21
-        imagePullPolicy: Always
-        ports:
-        - containerPort: 8080
-        - containerPort: 50000
-        volumeMounts:
-        - name: nfs-storage
-          mountPath: /var/jenkins_home
-          subPath: jenkins
+        - name: jenkins
+          image: jenkins/jenkins:jdk21
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+            - containerPort: 50000
+          env:
+            - name: JAVA_OPTS
+              value: "-Xmx2048m -Djava.awt.headless=true"
+          resources:
+            requests:
+              memory: "1024Mi"
+              cpu: "200m"
+            limits:
+              memory: "2560Mi"
+              cpu: "2000m"
+          volumeMounts:
+            - name: nfs-storage
+              mountPath: /var/jenkins_home
+              subPath: jenkins
       volumes:
-      - name: nfs-storage
-        persistentVolumeClaim:
-          claimName: nfs-main-pvc
+        - name: nfs-storage
+          persistentVolumeClaim:
+            claimName: nfs-main-pvc
