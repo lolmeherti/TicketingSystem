@@ -3,29 +3,3 @@ kind: Kustomization
 
 resources:
   - ../../base
-
-patches:
-  - path: patches/default-worker.yaml
-    target:
-      group: apps
-      version: v1
-      kind: Deployment
-      name: default-worker
-  - path: patches/jira-worker.yaml
-    target:
-      group: apps
-      version: v1
-      kind: Deployment
-      name: jira-worker
-  - path: patches/premium-app.yaml
-    target:
-      group: apps
-      version: v1
-      kind: Deployment
-      name: premium-app
-  - path: patches/reverb.yaml
-    target:
-      group: apps
-      version: v1
-      kind: Deployment
-      name: reverb
