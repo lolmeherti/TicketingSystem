@@ -1,9 +1,9 @@
-def testPod = '''
+def podYaml = '''
 apiVersion: v1
 kind: Pod
 metadata:
   labels:
-    app: jenkins-tester
+    app: jenkins-builder
 spec:
   containers:
   - name: dependency-installer
@@ -36,6 +36,17 @@ spec:
         value: http://127.0.0.1:8000
       - name: DUSK_DRIVER_URL
         value: http://127.0.0.1:4444/wd/hub
+  - name: kaniko
+    image: gcr.io/kaniko-project/executor:debug
+    command: ["/busybox/cat"]
+    tty: true
+    resources:
+      requests:
+        memory: "1Gi"
+        cpu: "500m"
+    volumeMounts:
+    - name: docker-config
+      mountPath: /kaniko/.docker
   - name: mysql
     image: mariadb:10.6
     args:
@@ -78,46 +89,8 @@ spec:
         memory: "2Gi"
         cpu: "2000m"
       requests:
-        memory: "512Mi"
-        cpu: "500m"
-  volumes:
-  - name: dshm
-    emptyDir:
-      medium: Memory
-'''
-
-def buildPod = '''
-apiVersion: v1
-kind: Pod
-metadata:
-  labels:
-    app: jenkins-builder
-spec:
-  containers:
-  - name: dependency-installer
-    image: lorisleiva/laravel-docker:8.4
-    # We use sleep infinity to keep the pod alive safely
-    command: ["sleep", "infinity"]
-    resources:
-      limits:
-        memory: "1Gi"
-        cpu: "2000m"
-      requests:
-        memory: "512Mi"
-        cpu: "500m"
-  - name: kaniko
-    image: gcr.io/kaniko-project/executor:debug
-    command: ["/busybox/cat"]
-    tty: true
-    resources:
-      requests:
         memory: "1Gi"
         cpu: "500m"
-      limits:
-        memory: "4Gi"
-    volumeMounts:
-    - name: docker-config
-      mountPath: /kaniko/.docker
   volumes:
   - name: docker-config
     secret:
@@ -125,6 +98,9 @@ spec:
       items:
       - key: .dockerconfigjson
         path: config.json
+  - name: dshm
+    emptyDir:
+      medium: Memory
 '''
 
 pipeline {
@@ -147,7 +123,7 @@ pipeline {
     stages {
         stage('Run Tests') {
             agent {
-                kubernetes { yaml testPod }
+                kubernetes { yaml podYaml }
             }
             stages {
                 stage('Setup Environment') {
@@ -239,7 +215,7 @@ pipeline {
 
         stage('Build Base') {
             agent {
-                kubernetes { yaml buildPod }
+                kubernetes { yaml podYaml }
             }
             steps {
                 checkout scm
@@ -250,10 +226,121 @@ pipeline {
                     /kaniko/executor --context `pwd` \
                         --dockerfile `pwd`/buildDeployFiles/base/Dockerfile \
                         --cache=false \
-                        --compressed-caching=false \
                         --single-snapshot \
-                        --destination ${DOCKER_USER}/${APP_NAME}-base:${IMAGE_TAG}
-                    """
+                        --destination ${DOCKER_USER}/base:${IMAGE_TAG} \
+                        --destination ${DOCKER_USER}/base:latest \
+                        --destination ${DOCKER_USER}/base:k8s
+                    """, label: 'Kaniko: Build Base'
+                }
+            }
+        }
+
+        stage('Build App') {
+            agent {
+                kubernetes { yaml podYaml }
+            }
+            steps {
+                checkout scm
+                container('dependency-installer') {
+                    echo "Injecting .env..."
+                    withCredentials([file(credentialsId: 'prod-env-file', variable: 'ENV_FILE')]) {
+                        sh script: 'cp $ENV_FILE .env', label: 'Inject Prod Env'
+                    }
+                    echo "Compiling Assets..."
+                    sh script: 'git config --global --add safe.directory "*"', label: 'Git Config'
+                    sh script: 'composer install --no-interaction --prefer-dist --optimize-autoloader', label: 'Composer Prod'
+                    sh script: 'npm install', label: 'NPM Install'
+                    sh script: 'npm run build', label: 'Vite Build'
+                }
+
+                container('kaniko') {
+                    echo "Building App with tag: ${IMAGE_TAG}"
+                    sh script: """
+                    /kaniko/executor --context `pwd` \
+                        --dockerfile `pwd`/buildDeployFiles/app/Dockerfile \
+                        --build-arg BASE_IMAGE=${DOCKER_USER}/base:${IMAGE_TAG} \
+                        --cache=false \
+                        --single-snapshot \
+                        --destination ${DOCKER_USER}/app:${IMAGE_TAG} \
+                        --destination ${DOCKER_USER}/app:latest \
+                        --destination ${DOCKER_USER}/app:k8s
+                    """, label: 'Kaniko: Build App'
+                }
+            }
+        }
+        stage('Build Nginx') {
+            agent {
+                kubernetes { yaml podYaml }
+            }
+            steps {
+                checkout scm
+                container('kaniko') {
+                    echo "Building Nginx with tag: ${IMAGE_TAG}"
+                    sh script: """
+                    /kaniko/executor --context `pwd` \
+                        --dockerfile `pwd`/buildDeployFiles/nginx/Dockerfile \
+                        --cache=false \
+                        --single-snapshot \
+                        --destination ${DOCKER_USER}/nginx:${IMAGE_TAG} \
+                        --destination ${DOCKER_USER}/nginx:latest
+                    """, label: 'Kaniko: Build Nginx'
+                }
+            }
+        }
+        stage('Build n8n') {
+            agent {
+                kubernetes { yaml podYaml }
+            }
+            steps {
+                checkout scm
+                container('kaniko') {
+                    echo "Building n8n with tag: ${IMAGE_TAG}"
+                    sh script: """
+                    /kaniko/executor --context `pwd` \
+                        --dockerfile `pwd`/buildDeployFiles/n8n/Dockerfile \
+                        --cache=false \
+                        --single-snapshot \
+                        --ignore-path=/usr/local/lib/node_modules \
+                        --destination ${DOCKER_USER}/n8n:${IMAGE_TAG} \
+                        --destination ${DOCKER_USER}/n8n:latest
+                    """, label: 'Kaniko: Build n8n'
+                }
+            }
+        }
+
+        stage('Deploy to ArgoCD') {
+            when {
+                buildingTag()
+            }
+            agent {
+                kubernetes { yaml podYaml }
+            }
+            steps {
+                container('dependency-installer') {
+                    script {
+                        echo "Deploying version ${IMAGE_TAG} to ArgoCD..."
+
+                        sh "curl -sSL -k -o argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-arm64"
+                        sh "chmod +x argocd"
+
+                        sh """
+                           ./argocd app set ${APP_NAME} \
+                             --server ${ARGOCD_SERVER} \
+                             --auth-token ${ARGOCD_AUTH_TOKEN} \
+                             --insecure \
+                             --kustomize-image deampuleadd/app=${IMAGE_TAG} \
+                             --kustomize-image deampuleadd/nginx=${IMAGE_TAG} \
+                             --kustomize-image deampuleadd/n8n=${IMAGE_TAG}
+                        """
+
+                        sh """
+                           ./argocd app sync ${APP_NAME} \
+                             --server ${ARGOCD_SERVER} \
+                             --auth-token ${ARGOCD_AUTH_TOKEN} \
+                             --insecure \
+                             --prune
+                        """
+                    }
                 }
             }
         }
