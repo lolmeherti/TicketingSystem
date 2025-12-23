@@ -245,4 +245,11 @@ pipeline {
                         --dockerfile `pwd`/buildDeployFiles/base/Dockerfile \
                         --cache=false \
                         --compressed-caching=false \
-                        --single-snapshot
+                        --single-snapshot \
+                        --destination ${DOCKER_USER}/${APP_NAME}-base:${IMAGE_TAG}
+                    """
+                }
+            }
+        }
+    }
+}
