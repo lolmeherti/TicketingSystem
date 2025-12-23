@@ -44,6 +44,8 @@ spec:
       requests:
         memory: "1Gi"
         cpu: "500m"
+      limits:
+        memory: "4Gi"
     volumeMounts:
     - name: docker-config
       mountPath: /kaniko/.docker
@@ -251,6 +253,7 @@ pipeline {
                     sh script: 'composer install --no-interaction --prefer-dist --optimize-autoloader', label: 'Composer Prod'
                     sh script: 'npm install', label: 'NPM Install'
                     sh script: 'npm run build', label: 'Vite Build'
+                    sh script: 'rm -rf node_modules', label: 'Cleanup node_modules'
                 }
 
                 container('kaniko') {
