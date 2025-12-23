@@ -342,7 +342,7 @@ pipeline {
                     script {
                         echo "Deploying version ${IMAGE_TAG} to ArgoCD..."
 
-                        sh "curl -sSL -k -o argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-arm64"
+                        sh "curl -sSL -o argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-arm64"
                         sh "chmod +x argocd"
 
                         sh """
@@ -350,17 +350,34 @@ pipeline {
                              --server ${ARGOCD_SERVER} \
                              --auth-token ${ARGOCD_AUTH_TOKEN} \
                              --insecure \
-                             --kustomize-image deampuleadd/app=${IMAGE_TAG} \
-                             --kustomize-image deampuleadd/nginx=${IMAGE_TAG} \
-                             --kustomize-image deampuleadd/n8n=${IMAGE_TAG}
+                             --kustomize-image deampuleadd/app=deampuleadd/app:${IMAGE_TAG} \
+                             --kustomize-image deampuleadd/nginx=deampuleadd/nginx:${IMAGE_TAG} \
+                             --kustomize-image deampuleadd/n8n=deampuleadd/n8n:${IMAGE_TAG}
                         """
 
                         sh """
-                           ./argocd app sync ${APP_NAME} \
+                           echo "Attempting to sync..."
+                           for i in 1 2 3 4 5; do
+                             ./argocd app sync ${APP_NAME} \
+                               --server ${ARGOCD_SERVER} \
+                               --auth-token ${ARGOCD_AUTH_TOKEN} \
+                               --insecure \
+                               --prune && break
+
+                             echo "Sync failed. Retrying in 10s..."
+                             sleep 10
+                           done
+                        """
+
+                        sh """
+                           ./argocd app wait ${APP_NAME} \
                              --server ${ARGOCD_SERVER} \
                              --auth-token ${ARGOCD_AUTH_TOKEN} \
                              --insecure \
-                             --prune
+                             --health \
+                             --sync \
+                             --operation \
+                             --timeout 300
                         """
                     }
                 }
