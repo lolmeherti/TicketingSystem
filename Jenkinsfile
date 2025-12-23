@@ -1,14 +1,13 @@
-def podYaml = '''
+def testPod = '''
 apiVersion: v1
 kind: Pod
 metadata:
   labels:
-    app: jenkins-builder
+    app: jenkins-tester
 spec:
   containers:
   - name: dependency-installer
     image: lorisleiva/laravel-docker:8.4
-    # We use sleep infinity to keep the pod alive safely
     command: ["sleep", "infinity"]
     resources:
       limits:
@@ -18,8 +17,6 @@ spec:
         memory: "1Gi"
         cpu: "500m"
     env:
-      - name: NODE_OPTIONS
-        value: "--max-old-space-size=1536"
       - name: DB_CONNECTION
         value: mysql
       - name: DB_HOST
@@ -36,19 +33,6 @@ spec:
         value: http://127.0.0.1:8000
       - name: DUSK_DRIVER_URL
         value: http://127.0.0.1:4444/wd/hub
-  - name: kaniko
-    image: gcr.io/kaniko-project/executor:debug
-    command: ["/busybox/cat"]
-    tty: true
-    resources:
-      requests:
-        memory: "1Gi"
-        cpu: "500m"
-      limits:
-        memory: "4Gi"
-    volumeMounts:
-    - name: docker-config
-      mountPath: /kaniko/.docker
   - name: mysql
     image: mariadb:10.6
     args:
@@ -66,7 +50,6 @@ spec:
         memory: "256Mi"
     ports:
       - containerPort: 3306
-
   - name: redis
     image: redis:alpine
     ports:
@@ -78,7 +61,6 @@ spec:
       requests:
         memory: "64Mi"
         cpu: "100m"
-  # ----------------------------------
   - name: selenium
     image: selenium/standalone-chromium:latest
     ports:
@@ -91,8 +73,48 @@ spec:
         memory: "2Gi"
         cpu: "2000m"
       requests:
+        memory: "512Mi"
+        cpu: "500m"
+  volumes:
+  - name: dshm
+    emptyDir:
+      medium: Memory
+'''
+
+def buildPod = '''
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app: jenkins-builder
+spec:
+  containers:
+  - name: dependency-installer
+    image: lorisleiva/laravel-docker:8.4
+    command: ["sleep", "infinity"]
+    resources:
+      limits:
+        memory: "2Gi"
+        cpu: "2000m"
+      requests:
         memory: "1Gi"
         cpu: "500m"
+    env:
+      - name: NODE_OPTIONS
+        value: "--max-old-space-size=1536"
+  - name: kaniko
+    image: gcr.io/kaniko-project/executor:debug
+    command: ["/busybox/cat"]
+    tty: true
+    resources:
+      requests:
+        memory: "1Gi"
+        cpu: "500m"
+      limits:
+        memory: "4Gi"
+    volumeMounts:
+    - name: docker-config
+      mountPath: /kaniko/.docker
   volumes:
   - name: docker-config
     secret:
@@ -100,9 +122,6 @@ spec:
       items:
       - key: .dockerconfigjson
         path: config.json
-  - name: dshm
-    emptyDir:
-      medium: Memory
 '''
 
 pipeline {
@@ -114,9 +133,7 @@ pipeline {
 
     environment {
         DOCKER_USER = 'deampuleadd'
-
         IMAGE_TAG = "${env.TAG_NAME ?: env.BUILD_NUMBER}"
-
         ARGOCD_SERVER = "argocd-server.argocd.svc.cluster.local"
         APP_NAME = "ticketing-system"
         ARGOCD_AUTH_TOKEN = credentials('argocd-token')
@@ -125,7 +142,7 @@ pipeline {
     stages {
         stage('Run Tests') {
             agent {
-                kubernetes { yaml podYaml }
+                kubernetes { yaml testPod }
             }
             stages {
                 stage('Setup Environment') {
@@ -217,7 +234,7 @@ pipeline {
 
         stage('Build Base') {
             agent {
-                kubernetes { yaml podYaml }
+                kubernetes { yaml buildPod }
             }
             steps {
                 checkout scm
@@ -239,7 +256,7 @@ pipeline {
 
         stage('Build App') {
             agent {
-                kubernetes { yaml podYaml }
+                kubernetes { yaml buildPod }
             }
             steps {
                 checkout scm
@@ -253,6 +270,8 @@ pipeline {
                     sh script: 'composer install --no-interaction --prefer-dist --optimize-autoloader', label: 'Composer Prod'
                     sh script: 'npm install', label: 'NPM Install'
                     sh script: 'npm run build', label: 'Vite Build'
+
+                    echo "Cleaning up node_modules to save memory..."
                     sh script: 'rm -rf node_modules', label: 'Cleanup node_modules'
                 }
 
@@ -273,7 +292,7 @@ pipeline {
         }
         stage('Build Nginx') {
             agent {
-                kubernetes { yaml podYaml }
+                kubernetes { yaml buildPod }
             }
             steps {
                 checkout scm
@@ -292,7 +311,7 @@ pipeline {
         }
         stage('Build n8n') {
             agent {
-                kubernetes { yaml podYaml }
+                kubernetes { yaml buildPod }
             }
             steps {
                 checkout scm
@@ -316,7 +335,7 @@ pipeline {
                 buildingTag()
             }
             agent {
-                kubernetes { yaml podYaml }
+                kubernetes { yaml buildPod }
             }
             steps {
                 container('dependency-installer') {
