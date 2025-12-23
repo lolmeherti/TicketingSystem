@@ -12,12 +12,14 @@ spec:
     command: ["sleep", "infinity"]
     resources:
       limits:
-        memory: "1Gi"
+        memory: "2Gi"
         cpu: "2000m"
       requests:
-        memory: "512Mi"
+        memory: "1Gi"
         cpu: "500m"
     env:
+      - name: NODE_OPTIONS
+        value: "--max-old-space-size=1536"
       - name: DB_CONNECTION
         value: mysql
       - name: DB_HOST
@@ -127,6 +129,10 @@ spec:
 
 pipeline {
     agent none
+
+    options {
+        disableConcurrentBuilds()
+    }
 
     environment {
         DOCKER_USER = 'deampuleadd'
