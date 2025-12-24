@@ -233,6 +233,9 @@ pipeline {
         }
 
         stage('Build Base') {
+            when {
+                buildingTag()
+            }
             agent {
                 kubernetes { yaml buildPod }
             }
@@ -255,6 +258,9 @@ pipeline {
         }
 
         stage('Build App') {
+            when {
+                buildingTag()
+            }
             agent {
                 kubernetes { yaml buildPod }
             }
@@ -291,6 +297,9 @@ pipeline {
             }
         }
         stage('Build Nginx') {
+            when {
+                buildingTag()
+            }
             agent {
                 kubernetes { yaml buildPod }
             }
@@ -310,6 +319,9 @@ pipeline {
             }
         }
         stage('Build n8n') {
+            when {
+                buildingTag()
+            }
             agent {
                 kubernetes { yaml buildPod }
             }
