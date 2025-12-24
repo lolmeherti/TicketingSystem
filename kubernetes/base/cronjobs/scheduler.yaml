@@ -4,29 +4,31 @@ metadata:
   name: laravel-scheduler
 spec:
   schedule: "* * * * *"
+  concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 1
   failedJobsHistoryLimit: 1
   jobTemplate:
     spec:
+      activeDeadlineSeconds: 120
       template:
         spec:
           restartPolicy: OnFailure
           containers:
-          - name: scheduler
-            image: deampuleadd/app:k8s
-            imagePullPolicy: Always
-            command: ["php", "artisan", "schedule:run"]
-            volumeMounts:
-            - name: env-secret-volume
-              mountPath: "/var/www/html/.env"
-              subPath: ".env"
-            - name: nfs-storage-images
-              mountPath: "/var/www/html/public/images"
-              subPath: "images"
+            - name: scheduler
+              image: deampuleadd/app:k8s
+              imagePullPolicy: Always
+              command: ["php", "artisan", "schedule:run"]
+              volumeMounts:
+                - name: env-secret-volume
+                  mountPath: "/var/www/html/.env"
+                  subPath: ".env"
+                - name: nfs-storage-images
+                  mountPath: "/var/www/html/public/images"
+                  subPath: "images"
           volumes:
-          - name: env-secret-volume
-            secret:
-              secretName: sealed-env-secret
-          - name: nfs-storage-images
-            persistentVolumeClaim:
-              claimName: nfs-main-pvc
+            - name: env-secret-volume
+              secret:
+                secretName: sealed-env-secret
+            - name: nfs-storage-images
+              persistentVolumeClaim:
+                claimName: nfs-main-pvc
